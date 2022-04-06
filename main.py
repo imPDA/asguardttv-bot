@@ -1,24 +1,24 @@
-import discord
+from dotenv import load_dotenv
+from clients.triggered_bot import TriggeredBot
+from cogs.settings import Settings
 import os
-
-client = discord.Client()
-
-
-@client.event
-async def on_ready():
-    print('We have logged in as {0.user}'.format(client))
+from database import RedisDatabase
 
 
-@client.event
-async def on_message(message):
-    if message.author == client.user:
-        return
+def main():
+    load_dotenv()
 
-    if any(substring in message.content.lower() for substring in
-           ['пария', 'парайа', 'париа', 'paria', 'парии', 'парию']):
-        stuhn_link = "https://cdn.discordapp.com/attachments/953278284098076672/958658012845838346/pariah.png"
-        await message.channel.send(stuhn_link)
+    DISCORD_TOKEN = os.environ['TOKEN']
+
+    my_bot = TriggeredBot(
+        command_prefix='!',
+        db=RedisDatabase()
+    )
+
+    my_bot.add_cog(Settings(bot=my_bot))
+    my_bot.run(DISCORD_TOKEN)
 
 
 if __name__ == '__main__':
-    client.run(os.environ['TOKEN'])
+    main()
+

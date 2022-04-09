@@ -1,3 +1,4 @@
+import dataclasses
 from abc import ABC, abstractmethod
 
 import redis
@@ -17,41 +18,50 @@ class BotDatabase(ABC):
 
     @property  # TODO delete
     @abstractmethod
-    def redis(self) -> redis.Redis:
-        return self._redis
+    def get_db(self):
+        """Returns DB instance."""
+        ...
 
     @property
     @abstractmethod
-    def guilds(self) -> list[int]:
-        raise NotImplemented
+    def _guilds(self) -> list[int]:
+        """Returns list of ID's of all guilds having triggers set."""
+        ...
 
     @abstractmethod
-    def _get_guild(self, _id: int) -> dict:
-        raise NotImplemented
+    def _get_guild(self, guild_id: int) -> dict:
+        """Returns data of particular guild from Redis."""
+        ...
 
     @abstractmethod
     def _save_guild(self, guild_data: dict) -> None:
-        raise NotImplemented
+        """Saves data of particular guild to Redis."""
+        ...
 
     @abstractmethod
-    def add_guild(self, guild_id: int, name: str = 'unknown') -> None:
-        raise NotImplemented
+    def _add_guild(self, guild_id: int, guild_name: str = 'unknown') -> None:
+        """Add an empty guild with given guild_id and empty dict of triggers."""
+        ...
 
     @abstractmethod
-    def get_triggers(self, _id: int) -> dict:
-        raise NotImplemented
+    def get_triggers(self, _id: int) -> dict | None:
+        """Returns dict of triggers of given guild or None if triggers are not defined."""
+        ...
 
     @abstractmethod
-    def get_trigger(self, guild_id: int, trigger: str) -> dict:
-        raise NotImplemented
+    def get_trigger(self, guild_id: int, trigger: str) -> dict | None:
+        """Returns asked trigger of given guild or None if trigger is not defined."""
+        ...
 
     @abstractmethod
-    def add_trigger(self, guild_id: int, name_of_trigger: str, trigger: dict) -> None:
-        raise NotImplemented
+    def set_trigger(self, guild_id: int, name_of_trigger: str, trigger_data: dict) -> None:
+        """Creates a guild if it does not exist and saves trigger to this guild."""
+        ...
 
     @abstractmethod
-    def erase(self):
-        raise NotImplemented
+    def _erase(self):
+        """Delete all data from DB."""
+        ...
 
 
 class RedisDatabase(BotDatabase):
@@ -62,65 +72,73 @@ class RedisDatabase(BotDatabase):
                  port: int = int(os.environ['REDIS_PORT']),
                  password: str = os.environ['REDIS_PASSWORD']
                  ):
-        super(BotDatabase, self).__init__()
-        self._redis: redis.Redis = redis.StrictRedis(host=host, port=port, password=password)
+        # super(BotDatabase, self).__init__()
+        self._db: redis.Redis = redis.StrictRedis(host=host, port=port, password=password)
 
     @property  # TODO delete
-    def redis(self) -> redis.Redis:
-        return self._redis
+    def get_db(self) -> redis.Redis:
+        """Returns DB instance."""
+        return self._db
 
     @property
-    def guilds(self) -> list[int]:
+    def _guilds(self) -> list[int]:
         """Returns list of ID's of all guilds having triggers set."""
-        return [int(key.decode()) for key in self._redis.keys()]
+        return [int(key.decode()) for key in self._db.keys()]
 
-    def _get_guild(self, _id: int) -> dict:
-        return self._redis.json().get(_id)
+    def _get_guild(self, guild_id: int) -> dict:
+        """Returns data of particular guild from Redis."""
+        if guild_id not in self._guilds:
+            raise NoGuildFoundError  # TODO custom errors
+        return self._db.json().get(guild_id)
 
     def _save_guild(self, guild_data: dict) -> None:
-        self._redis.json().set(guild_data['id'], Path.root_path(), guild_data)
+        """Saves data of particular guild to Redis."""
+        self._db.json().set(guild_data['id'], Path.root_path(), guild_data)
 
-    def add_guild(self, guild_id: int, name: str = 'unknown') -> None:
+    def _add_guild(self, guild_id: int, guild_name: str = 'unknown') -> None:
+        """Add an empty guild with given guild_id and empty dict of triggers."""
         # print(f'All guilds are: {self.guilds}')  # TODO logging
-        if guild_id not in self.guilds:
+        if guild_id not in self._guilds:
             # print(f'Adding new guild: {name}@{guild_id}')  # TODO logging
-            new_guild = {
-                'id': guild_id,
-                'name': name,
-                'triggers': {},
-                'settings': {},
-            }
 
-            self._redis.json().set(guild_id, Path.root_path(), new_guild)
+            self._db.json().set(guild_id, Path.root_path(), {
+                'id': guild_id,
+                'name': guild_name,
+                'triggers': {},  # TODO Empty dict?
+                'settings': {},  # TODO Empty dict?
+            })
             # print(f'Done!')  # TODO logging
 
-    def get_triggers(self, _id: int) -> dict:
-        if _id not in self.guilds:  # TODO to get guild
-            return {}  # TODO Exception ?
-        return self._get_guild(_id=_id).get('triggers', {})
+    def get_triggers(self, _id: int) -> dict | None:
+        """Returns dict of triggers of given guild or None if triggers are not defined."""
+        return self._get_guild(guild_id=_id).get('triggers', None)
 
-    def get_trigger(self, guild_id: int, trigger: str) -> dict:
-        if guild_id not in self.guilds:  # TODO to get guild
-            return {}  # TODO Exception ?
-        return self._get_guild(_id=guild_id).get('triggers', {}).get(trigger, {})
+    def get_trigger(self, guild_id: int, trigger: str) -> dict | None:
+        """Returns asked trigger of given guild or None if trigger is not defined."""
+        return self._get_guild(guild_id=guild_id).get('triggers', {}).get(trigger, None)
 
-    def add_trigger(self, guild_id: int, name_of_trigger: str, trigger: dict) -> None:
-        if guild_id not in self.guilds:
-            raise NoGuildFoundError
-
+    def set_trigger(self, guild_id: int, name_of_trigger: str, trigger_data: dict) -> None:
+        """Creates a guild if it does not exist and saves trigger to this guild."""
         # print(f'Data: {guild_id} {name} {patterns} {msg} {emoji} {mode}')  # TODO logging
-        guild_data = self._get_guild(_id=guild_id)
-        guild_data['triggers'].update({name_of_trigger: trigger})
+        if guild_id not in self._guilds:
+            self._add_guild(guild_id=guild_id)
+
+        guild_data = self._get_guild(guild_id=guild_id)
+        guild_data['triggers'].update({name_of_trigger: trigger_data})  # TODO ['triggers'] to .get('triggers')
         self._save_guild(guild_data=guild_data)
 
-    def erase(self):
+    def _erase(self):
+        """Delete all data from DB."""
         if input(f'Print password to erase all database: ') == '987654321':
-            for key in self._redis.keys():
-                self._redis.delete(key)
+            for key in self._db.keys():
+                self._db.delete(key)
 
 
 if __name__ == '__main__':
     r = RedisDatabase()
+
+    from clients.triggered_bot import Trigger
+    a = Trigger(name='ddd', pattern='sdf', msg='ggg')
 
     vbnw = {
         'id': 1231231,
@@ -137,7 +155,8 @@ if __name__ == '__main__':
                 'msg': 'stuhn.jpeg',
                 'emoji': ':stuhn:',
                 'mode': 0,
-            }
+            },
+            a.name: a.serialize()
         },
         'settings': {
             # some stuff here
@@ -160,7 +179,16 @@ if __name__ == '__main__':
         }
     }
 
+    r.get_db.json().set(vbnw['id'], Path.root_path(), vbnw)
+
     # r.redis.json().set(vbnw['id'], Path.root_path(), vbnw)
     # r.redis.json().set(assguard['id'], Path.root_path(), assguard)
     #
-    # print(r.guilds)
+    aa = r.get_db.json().get(922919845450903573)
+    print(aa)
+
+    for trigger_name, trigger_data in aa['triggers'].items():
+        a = Trigger.from_database(name=trigger_name, trigger=trigger_data)
+        print(a)
+
+# TODO backup

@@ -28,6 +28,7 @@ class TriggeredBot(commands.Bot):
         guilds = [  # TODO-1 to .env  TODO-2 do i need it?
             Object(id='922919845450903573'),
             Object(id='699083894179495940'),
+            Object(id='806207945494364182')
         ]
 
         for guild in guilds:

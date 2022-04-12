@@ -58,7 +58,11 @@ class RedisTriggeredBotDatabase(BotDatabase):
     def _get_guild(self, guild_id: int) -> dict:
         """Returns data of particular guild from Redis."""
         if guild_id not in self._guilds:
-            raise GuildNotFoundError  # TODO custom errors
+            self._save_guild(guild_id=guild_id, guild_data={
+                'name': 'unknown',
+                'triggers': {},
+            })  # TODO FIX IT
+            # raise GuildNotFoundError  # TODO custom errors
         return self._db.json().get(guild_id)
 
     def _save_guild(self, guild_id: int, guild_data: dict) -> None:
@@ -78,7 +82,8 @@ class RedisTriggeredBotDatabase(BotDatabase):
             return Trigger.from_database(
                 (trigger_name, self._get_guild(guild_id=guild_id).get('triggers').get(trigger_name))
             )
-        except AttributeError:
+        except TypeError:
+            print(f'{trigger_name} trigger not found.')  # TODO logging
             raise TriggerNotFoundError
 
     def set_trigger(self, guild_id: int, trigger: Trigger) -> None:

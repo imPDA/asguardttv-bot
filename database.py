@@ -1,49 +1,71 @@
+from __future__ import annotations
 import os
-from typing import Protocol
+import time
+from typing import Protocol, List, Optional, Dict, Any
+from datetime import datetime, timedelta
+from pprint import pprint
+import pickle
 
 import redis
 from redis.commands.json.path import Path
 
-from datatypes import Trigger
+import abc
+from errors import TriggerNotFoundError, GuildNotFoundError
+from datatypes import Trigger, Settings, DiscordGuild, DiscordObject, Guild
 from dotenv import load_dotenv
+
+from pprint import pprint
+from dataclasses import dataclass, field
 
 load_dotenv()
 
 
-class GuildNotFoundError(Exception):
-    pass
+class BotDatabase(abc.ABC):
+    """Base database."""  # TODO rewrite
 
+    def __init__(self,
+                 host: Optional[str] = None,
+                 port: Optional[int | str] = None,
+                 password: Optional[str] = None,
+                 ) -> None:
+        self._db: redis.Redis = redis.StrictRedis(
+            host=host if host else os.environ['REDIS_HOST'],
+            port=port if port else int(os.environ['REDIS_PORT']),
+            password=password if password else os.environ['REDIS_PASSWORD']
+        )
 
-class TriggerNotFoundError(Exception):
-    pass
+    # def guilds(self) -> List[DiscordObject]:
+    #     """Returns list of all guilds having triggers set."""
 
-
-class BotDatabase(Protocol):
-    """Database for storing guilds and their triggers."""
-
-    def _guilds(self) -> list[int]:
-        """Returns list of all guilds (ID's) having triggers set."""
-
-    def _get_guild(self, guild_id: int) -> dict:
+    def _get_guild(self, guild: DiscordGuild) -> dict:
         """Returns data of particular guild from database by ID."""
 
-    def _save_guild(self, guild_id: int, guild_data: dict) -> None:
-        """Saves data of particular guild to database."""
+    # def save_guild(self, guild: DiscordGuild, guild_data: dict) -> None:
+    #     """Saves data of particular guild to database."""
 
     def _erase(self):
         """Delete all data from DB."""
 
+    """New part."""
+    def get_guild(self, guild_id: int) -> Dict:
+        return self._db.json().get(guild_id)
+
+    def save_guild(self, guild: Guild) -> None:
+        self._db.json().set(guild.id, Path.root_path(), guild.to_db)
+
+    def keys(self) -> List[int]:
+        return [int(key.decode()) for key in self._db.keys()]
+
 
 class RedisTriggeredBotDatabase(BotDatabase):
-    """Redis DB located on AWS"""
+    """Redis DB for TriggeredBot."""
 
     def __init__(self,
-                 host: str = os.environ['REDIS_HOST'],
-                 port: int = int(os.environ['REDIS_PORT']),
-                 password: str = os.environ['REDIS_PASSWORD']
-                 ):
-        # super(BotDatabase, self).__init__()
-        self._db: redis.Redis = redis.StrictRedis(host=host, port=port, password=password)
+                 host: Optional[str] = None,
+                 port: Optional[int | str] = None,
+                 password: Optional[str] = None,
+                 ) -> None:
+        super().__init__(host=host, port=port, password=password)
 
     @property  # TODO delete
     def get_db(self) -> redis.Redis:
@@ -51,56 +73,154 @@ class RedisTriggeredBotDatabase(BotDatabase):
         return self._db
 
     @property
-    def _guilds(self) -> list[int]:
+    def guilds(self) -> List[DiscordObject]:
         """Returns list of ID's of all guilds having triggers set."""
-        return [int(key.decode()) for key in self._db.keys()]
+        return [DiscordObject(id=(key.decode())) for key in self._db.keys()]
 
-    def _get_guild(self, guild_id: int) -> dict:
+    def _get_guild(self, guild: DiscordGuild) -> dict:
         """Returns data of particular guild from Redis."""
-        if guild_id not in self._guilds:
-            self._save_guild(guild_id=guild_id, guild_data={
-                'name': 'unknown',
-                'triggers': {},
-            })  # TODO FIX IT
-            # raise GuildNotFoundError  # TODO custom errors
-        return self._db.json().get(guild_id)
+        if guild.id not in [_guild.id for _guild in self.guilds]:
+            raise GuildNotFoundError  # TODO custom errors
+        return self._db.json().get(guild.id)
 
-    def _save_guild(self, guild_id: int, guild_data: dict) -> None:
+    def save_guild(self, guild: DiscordGuild, guild_data: dict) -> None:
         """Saves data of particular guild to Redis."""
-        self._db.json().set(guild_id, Path.root_path(), guild_data)
+        self._db.json().set(guild.id, Path.root_path(), guild_data)
 
-    def get_triggers(self, guild_id: int) -> list[Trigger] | None:
+    def create_empty_guild(self, guild: DiscordGuild) -> None:
+        self.save_guild(guild=guild, guild_data={
+            'name': guild.name,
+            'triggers': {},
+            'settings': Settings().to_dict,
+        })
+
+    def get_triggers(self, guild: DiscordGuild) -> List[Trigger] | None:
         """Returns dict of triggers of given guild or None if triggers are not defined."""
         try:
-            return [Trigger.from_database(item) for item in self._get_guild(guild_id=guild_id).get('triggers').items()]
+            return [Trigger.from_database(item) for item in self._get_guild(guild=guild).get('triggers').items()]
         except TypeError:
             return
+        except AttributeError:
+            # AttributeError: 'NoneType' object has no attribute 'get'
+            return
 
-    def get_trigger(self, guild_id: int, trigger_name: str) -> Trigger:
+    def get_trigger(self, guild: DiscordGuild, name: str) -> Trigger:
         """Returns asked trigger of given guild or raises an exception."""
         try:
             return Trigger.from_database(
-                (trigger_name, self._get_guild(guild_id=guild_id).get('triggers').get(trigger_name))
+                (name, self._get_guild(guild=guild).get('triggers').get(name))
             )
         except TypeError:
-            print(f'{trigger_name} trigger not found.')  # TODO logging
+            print(f'{name} trigger not found.')  # TODO logging
             raise TriggerNotFoundError
 
-    def set_trigger(self, guild_id: int, trigger: Trigger) -> None:
+    def set_trigger(self, guild: DiscordGuild, trigger: Trigger) -> None:
         """Creates a guild if it does not exist and saves trigger to this guild."""
         # print(f'Data: {guild_id} {name} {patterns} {msg} {emoji} {mode}')  # TODO logging
-        try:
-            guild_data = self._get_guild(guild_id=guild_id)
-        except GuildNotFoundError:
-            guild_data = {
-                'name': 'unknown',
-                'triggers': {},
-            }
-        guild_data['triggers'].update({trigger.name: trigger.dict_parameters})
-        self._save_guild(guild_id=guild_id, guild_data=guild_data)
+        guild_data = self._get_guild(guild=guild)
+        guild_data['triggers'].update(trigger.to_dict)
+        self.save_guild(guild=guild, guild_data=guild_data)
+
+    def get_settings(self, guild: DiscordGuild) -> Settings:
+        return Settings.from_database(self._get_guild(guild=guild).get('settings'))
+
+    def set_settings(self, guild: DiscordGuild, settings: Settings) -> None:
+        data = self._get_guild(guild=guild)
+        data['settings'].update(settings.to_dict)
+        self.save_guild(guild=guild, guild_data=data)
+
+
+@dataclass
+class GuildDatabase:
+    """Description"""  # TODO
+    _db: BotDatabase
+    _guilds: Dict[int, Guild] = field(default_factory=dict)
+
+    @staticmethod
+    def check_hash(func):
+        def wrapper(*args, **kwargs):
+            self = args[0]
+            guild: Guild = kwargs.get('guild_id')
+
+            if isinstance(guild, int):
+                guild = self._guilds[guild]
+
+            if guild and guild.last_check + timedelta(minutes=5) < datetime.now():
+                hash_from_db = self._db.get_guild(guild_id=guild.id).get('hash')
+                if hash_from_db != guild.hash:
+                    print('Different hashes!')  # TODO logging
+                    self._db.save_guild(guild=guild)
+                else:
+                    print('Everything is up to date!')  # TODO logging
+            return func(*args, **kwargs)
+        return wrapper
+
+    @check_hash
+    def guild(self, guild_id: int) -> Guild:
+        return self._guilds[guild_id]
+
+    @property
+    def guilds(self):
+        return self._guilds
+
+    @classmethod
+    def load_from_database(cls, db: BotDatabase) -> GuildDatabase:
+        return cls(
+            _db=db,
+            _guilds={key: Guild.from_db(guild_id=key, data=db.get_guild(guild_id=key)) for key in db.keys()}
+        )
+
+    def save_to_file(self):
+        with open('data.pickle', 'wb') as f:
+            pickle.dump(self._guilds, f)
+
+    @classmethod
+    def read_guilds_from_file(cls):
+        with open('data.pickle', 'rb') as f:
+            return pickle.load(f)
+
+    def add_new_guild(self, guild: DiscordGuild):
+        if guild.id in self._guilds.keys():  # TODO guild already exists
+            return
+        self._guilds[guild.id] = Guild(
+                id=guild.id,
+                name=guild.name,
+        )
+
+    def save_all_guilds_to_db(self):
+        for guild in self._guilds.values():
+            self._db.save_guild(guild=guild)
 
 
 if __name__ == '__main__':
-    r = RedisTriggeredBotDatabase()
+    r = BotDatabase()
+
+    nya = Trigger(
+        name="ня",
+        pattern=".*ня.*",
+        emoji="<:nya:45336425623423>",
+        mode="2"
+    )
+
+    woof = Trigger(
+        name="гав",
+        pattern=".*гав.*",
+        emoji="<:woof:0344633434563>",
+        mode="2"
+    )
+
+    my_best_guild = Guild(
+        id=922919845450903573,
+        name="MyBestGuildEver",
+        triggers=[
+            Trigger.from_database((nya.name, nya)),
+            Trigger.from_database((woof.name, woof))
+        ]
+    )
+
+    my_best_guilds = GuildDatabase(
+        _guilds=[my_best_guild],
+        _db=r,
+    )
 
 # TODO backup

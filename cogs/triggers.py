@@ -20,8 +20,8 @@ class SlashTrigger(commands.Cog):
     async def trigger(self, interaction: Interaction, name: str):
         """Slash command to add or change trigger."""
         try:
-            trigger = self.bot.db.guild(guild_id=interaction.guild_id).get_trigger(name=name)
-        except TriggerNotFoundError:
+            trigger = self.bot.db.guild(guild_id=interaction.guild_id).triggers[name]
+        except KeyError:
             trigger = None
         await interaction.response.send_modal(ModalSetTrigger(trigger_name=name, bot=self.bot, trigger=trigger))
 
@@ -32,7 +32,7 @@ class SlashTrigger(commands.Cog):
             current: str
     ) -> List[app_commands.Choice[str]]:
         return [app_commands.Choice(name=trigger.name, value=trigger.name) for trigger
-                in self.bot.db.guild(guild_id=interaction.guild_id).triggers
+                in self.bot.db.guild(guild_id=interaction.guild_id).triggers.values()
                 if current in trigger.name]
 
     @app_commands.command(name='list', description="Список всех команд сервера")

@@ -1,32 +1,39 @@
-from discord.ext import commands
-from discord import Intents, Guild as DiscordGuild
+from pprint import pprint
 
-from database import GuildDatabase
+from discord.ext import commands
+from discord import Intents, Guild
+from discord.channel import DMChannel
+
+from database import LocalDatabase, RedisDatabase, MyRedisDatabase
 import re
 from enums import ResponseMode
+
+from datatypes import Guild as DBGuild
 
 
 class TriggeredBot(commands.Bot):
     """Custom Discord bot."""
 
-    def __init__(self, command_prefix, intents: Intents, db: GuildDatabase):
+    def __init__(self, command_prefix, intents: Intents, remote_database: MyRedisDatabase):
         super().__init__(
             command_prefix=commands.when_mentioned_or(command_prefix),
             intents=intents,
         )  # TODO description, help_command
-        self._db: GuildDatabase = db
+        self.local_database = LocalDatabase.load_from_database(remote_database)
+        self.remote_database: MyRedisDatabase = remote_database
 
     @property
-    def db(self) -> GuildDatabase:
-        return self._db
+    def db(self) -> LocalDatabase:
+        """:class:`GuildLocalDatabase`: Database of this bot."""
+        return self.local_database
 
-    async def on_ready(self):
-        print(f'Logged in as {self.user} (ID: {self.user.id})')
+    async def on_ready(self) -> None:
+        print(f"Logged in as {self.user} (ID: {self.user.id})")    # TODO logging
 
-    async def on_guild_join(self, guild: DiscordGuild):
-        print(f'Joined {guild.name} (ID {guild.id})')  # TODO logging
-        if guild.id not in self._db.guilds.keys():
-            self._db.add_new_guild(guild=guild)
+    async def on_guild_join(self, guild: Guild):
+        print(f"Joined {guild.name} (ID {guild.id})")  # TODO logging
+        if guild.id not in self.db.guilds:
+            self.db.guilds.update({guild.id: DBGuild(id=guild.id, name=guild.name)})
 
     async def on_message(self, message):
         if message.author == self.user:
@@ -36,7 +43,10 @@ class TriggeredBot(commands.Bot):
             await self.process_commands(message)
             return
 
-        triggers = self._db.guild(guild_id=message.guild.id).triggers.values()
+        if isinstance(message.channel, DMChannel):  # no messages in DM!
+            return
+
+        triggers = self.db.guilds[message.guild.id].triggers.values()
 
         for trigger in triggers:
             if re.match(trigger.pattern, message.content.lower()):
@@ -50,3 +60,8 @@ class TriggeredBot(commands.Bot):
                     case ResponseMode.ALL:
                         await message.channel.send(trigger.msg)
                         await message.add_reaction(trigger.emoji)
+
+    def save_local_database(self) -> None:
+        self.local_database.save_to_redis_db(self.remote_database)
+
+# TODO add DB saving and hashing

@@ -1,13 +1,16 @@
 import asyncio
-
-from dotenv import load_dotenv
-from clients.triggered_bot import TriggeredBot
-from cogs.triggers import SlashTrigger
-from cogs.settings import SlashSettings
-from cogs.sync import CommandSync
 import os
-from database import GuildDatabase, BotDatabase
+from dotenv import load_dotenv
+
 from discord import Intents
+from clients.triggered_bot import TriggeredBot
+from cogs.sync import CommandSync
+
+from database import LocalDatabase, MyRedisDatabase
+
+from cogs.slash_triggers import SlashTriggers
+from cogs.slash_settings import SlashSettings
+from cogs.slash_builds import SlashBuilds
 
 
 async def main():
@@ -17,20 +20,23 @@ async def main():
     intents = Intents.default()
     intents.message_content = True
 
+    remote_database = MyRedisDatabase()
+
     my_bot = TriggeredBot(
         command_prefix='!',
-        db=GuildDatabase.load_from_database(db=BotDatabase()),
+        remote_database=remote_database,
         intents=intents,
     )
 
-    await my_bot.add_cog(SlashTrigger(bot=my_bot))  # TODO guilds?
-    await my_bot.add_cog(SlashSettings(bot=my_bot))
+    await my_bot.add_cog(SlashTriggers(bot=my_bot))
+    # await my_bot.add_cog(SlashSettings(bot=my_bot))
     await my_bot.add_cog(CommandSync())
+    await my_bot.add_cog(SlashBuilds(bot=my_bot))
 
     try:
         await my_bot.start(DISCORD_TOKEN)
     except KeyboardInterrupt:
-        my_bot.db.save_all_guilds_to_db()
+        my_bot.db.save_to_redis_db(db=remote_database,)
         await my_bot.close()
 
 
@@ -39,4 +45,3 @@ if __name__ == '__main__':
 
 
 # TODO help command
-# TODO mention

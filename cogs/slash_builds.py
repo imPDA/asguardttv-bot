@@ -75,6 +75,7 @@ class SlashBuilds(commands.Cog):
                 408926967455285248,  # impda#9680 TODO addind on fly with command
                 332997447678820373,  # VBNW#4625
                 973696948651565086,  # neYa#8047
+                358169245688791044,  # Russian Asgard#7398
 
             ]
 

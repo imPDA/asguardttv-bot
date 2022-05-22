@@ -86,7 +86,9 @@ class MyRedisDatabase(RedisDatabase):
         """Saves all builds to Redis."""
 
         data = self.get(key=0)
-        data['builds'] = builds
+        data['builds'] = dict()
+        for build in builds.values():
+            data['builds'][build.id] = build.to_database
         self.set(0, data)
 
     @property

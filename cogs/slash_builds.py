@@ -176,63 +176,91 @@ class SlashBuilds(commands.Cog):
 
     @builds.command(name='list', description="Список всех билдов")
     @is_trusted_person()
-    async def list(self, interaction: Interaction, guild_specific: bool = False, author: Optional[str] = None):
+    async def list(
+            self,
+            interaction: Interaction,
+            guild_specific: bool = False,
+            author: Optional[str] = None,
+            my: bool = False) -> None:
         """Slash command to print out list of builds."""
 
-        guild_specific_builds = [build for build in self.bot.db.builds.values() if
-                                 interaction.guild_id == build.guild and
-                                 not build.availability == 'opened']
-        other_builds = [] if guild_specific else \
-            [build for build in self.bot.db.builds.values() if build.availability == 'opened' and
-             build not in guild_specific_builds]
-
-        if author:
-            guild_specific_builds = [build for build in guild_specific_builds if build.author == author]
-            other_builds = [build for build in other_builds if build.author == author]
-
-        if len(guild_specific_builds) == 0 and len(other_builds) == 0:
-            await interaction.response.send_message(content="Не найдено билдов!", ephemeral=True)
+        if my:
+            my_builds = [build for build in self.bot.db.builds.values() if str(interaction.user.id) in build.added_by]
+            embed_my_builds = Embed(
+                title=f"Список добавленных {interaction.user.name} билдов",
+                description="\n".join(
+                    f"**{i + 1}. {build.name}**\n"
+                    f"**Спек** {build.type}\n"
+                    f"**Класс** {build.eso_class}\n"
+                    f"**Локации** {build.locations}\n"
+                    f"**Описание** {build.description}\n"
+                    f"**Автор** {build.author if build.author else 'Неизвестен'}\n"
+                    f"**Дата добавления** {build.added_time}\n"
+                    for i, build in
+                    enumerate(my_builds)
+                ),
+                timestamp=datetime.now(),
+                colour=Colour.default()
+            )
+            if len(my_builds) == 0:
+                await interaction.response.send_message(content="Не найдено билдов!", ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=embed_my_builds, ephemeral=True)
         else:
-            await interaction.response.defer()
+            guild_specific_builds = [build for build in self.bot.db.builds.values() if
+                                     interaction.guild_id == build.guild and
+                                     not build.availability == 'opened']
+            other_builds = [] if guild_specific else \
+                [build for build in self.bot.db.builds.values() if build.availability == 'opened' and
+                 build not in guild_specific_builds]
 
-        embed_guild_specific_builds = Embed(
-            title=f"Список билдов в гильдии",
-            description="\n".join(
-                f"**{i + 1}. {build.name}**\n"
-                f"**Спек** {build.type}\n"
-                f"**Класс** {build.eso_class}\n"
-                f"**Локации** {build.locations}\n"
-                f"**Описание** {build.description}\n"
-                f"**Автор** {build.author if build.author else 'Неизвестен'}\n"
-                f"**Дата добавления** {build.added_time}\n"
-                for i, build in
-                enumerate(guild_specific_builds)
-            ),
-            timestamp=datetime.now(),
-            colour=Colour.default()
-        )
+            if author:
+                guild_specific_builds = [build for build in guild_specific_builds if build.author == author]
+                other_builds = [build for build in other_builds if build.author == author]
 
-        embed_other_builds = Embed(
-            title=f"Прочие билды",
-            description="\n".join(
-                f"**{i + 1}. {build.name}**\n"
-                f"**Спек** {build.type}\n"
-                f"**Класс** {build.eso_class}\n"
-                f"**Локации** {build.locations}\n"
-                f"**Описание** {build.description}\n"
-                f"**Автор** {build.author if build.author else 'Неизвестен'}\n"
-                f"**Дата добавления** {build.added_time}\n"
-                for i, build in
-                enumerate(other_builds)
-            ),
-            timestamp=datetime.now(),
-            colour=Colour.default()
-        )
+            if len(guild_specific_builds) == 0 and len(other_builds) == 0:
+                await interaction.response.send_message(content="Не найдено билдов!", ephemeral=True)
+            else:
+                await interaction.response.defer()
 
-        if len(guild_specific_builds) > 0:
-            await interaction.followup.send(embed=embed_guild_specific_builds)
-        if len(other_builds) > 0:
-            await interaction.followup.send(embed=embed_other_builds)
+            embed_guild_specific_builds = Embed(
+                title=f"Список билдов в гильдии",
+                description="\n".join(
+                    f"**{i + 1}. {build.name}**\n"
+                    f"**Спек** {build.type}\n"
+                    f"**Класс** {build.eso_class}\n"
+                    f"**Локации** {build.locations}\n"
+                    f"**Описание** {build.description}\n"
+                    f"**Автор** {build.author if build.author else 'Неизвестен'}\n"
+                    f"**Дата добавления** {build.added_time}\n"
+                    for i, build in
+                    enumerate(guild_specific_builds)
+                ),
+                timestamp=datetime.now(),
+                colour=Colour.default()
+            )
+
+            embed_other_builds = Embed(
+                title=f"Прочие билды",
+                description="\n".join(
+                    f"**{i + 1}. {build.name}**\n"
+                    f"**Спек** {build.type}\n"
+                    f"**Класс** {build.eso_class}\n"
+                    f"**Локации** {build.locations}\n"
+                    f"**Описание** {build.description}\n"
+                    f"**Автор** {build.author if build.author else 'Неизвестен'}\n"
+                    f"**Дата добавления** {build.added_time}\n"
+                    for i, build in
+                    enumerate(other_builds)
+                ),
+                timestamp=datetime.now(),
+                colour=Colour.default()
+            )
+
+            if len(guild_specific_builds) > 0:
+                await interaction.followup.send(embed=embed_guild_specific_builds)
+            if len(other_builds) > 0:
+                await interaction.followup.send(embed=embed_other_builds)
 
     @list.autocomplete('author')
     async def list_author_autocomplete(
@@ -245,6 +273,72 @@ class SlashBuilds(commands.Cog):
                 (build.guild == interaction.guild_id or build.availability == 'opened') and
                 (current in build.author or current == '')]
 
+    @builds.command(name='delete', description="Удалить билд")
+    @is_trusted_person()
+    async def delete(self, interaction: Interaction, name: str):
+        """Slash command to find a build."""
+
+        delete_button = Button(label="Удалить", style=discord.ButtonStyle.danger)
+        abort_button = Button(label="Отменить", style=discord.ButtonStyle.primary)
+
+        async def delete_callback(interaction: Interaction) -> None:
+            try:
+                for id_, build in self.bot.db.builds.items():
+                    if build.name == name:
+                        if str(interaction.user.id) not in build.added_by:  # it was not you added build - can`t delete
+                            await interaction.response.edit_message(
+                                content=f"Ошибка удаления (билд был добавлен другим пользователем!).",
+                                view=None,
+                                embed=None
+                            )
+                        else:
+                            self.bot.db.builds.pop(id_)
+                            self.bot.save_local_database()
+                            await interaction.response.edit_message(
+                                content=f"Билд {name} удалён!",
+                                view=None,
+                                embed=None
+                            )
+                        break
+            except KeyError:
+                await interaction.response.edit_message(content=f"Ошибка удаления (KeyError).", view=None, embed=None)
+
+        async def abort_callback(interaction: Interaction) -> None:
+            await interaction.response.edit_message(content="Отменено.", view=None, embed=None)
+
+        delete_button.callback = delete_callback
+        abort_button.callback = abort_callback
+
+        build = {build.name: build for build in self.bot.db.builds.values()}[name]
+        embed = Embed(
+            title=f"{build.name}",
+            description=
+                f"**Спек** {build.type}\n"
+                f"**Класс** {build.eso_class}\n"
+                f"**Локации** {build.locations}\n"
+                f"**Описание** {build.description}\n"
+                f"**Автор** {build.author if build.author else 'Неизвестен'}\n"
+                f"**Дата добавления** {build.added_time}\n",
+            timestamp=datetime.now(),
+            colour=Colour.default()
+        )
+
+        view = View()
+        view.add_item(delete_button)
+        view.add_item(abort_button)
+
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @delete.autocomplete('name')
+    async def delete_name_autocomplete(
+            self,
+            interaction: Interaction,
+            current: str
+    ) -> List[app_commands.Choice[str]]:
+        return [app_commands.Choice(name=build.name, value=build.name) for build
+                in self.bot.db.builds.values() if
+                str(interaction.user.id) in build.added_by]  # if you added the build you can delete it
+
     @add.error
     async def add_error(self, interaction, error):
         if isinstance(error, MissingPermissions):
@@ -256,6 +350,11 @@ class SlashBuilds(commands.Cog):
             await interaction.response.send_message("Недостаточно прав для использования команды", ephemeral=True)
         else:
             print(error)
+
+    @delete.error
+    async def delete_error(self, interaction, error):
+        if isinstance(error, MissingPermissions):
+            await interaction.response.send_message("Недостаточно прав для использования команды", ephemeral=True)
 
 
 class ModalAddBuild(Modal):

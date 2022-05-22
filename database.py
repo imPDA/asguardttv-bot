@@ -75,11 +75,18 @@ class MyRedisDatabase(RedisDatabase):
         build = (id_, self.get(key=0)['builds'].get(id_))
         return Build.from_database(build=build)
 
-    def save_build(self, build: Build) -> None:  # TODO save all builds
+    def save_build(self, build: Build) -> None:
         """Saves particular :class:`Build` to Redis."""
 
         data = self.get(key=0)
         data['builds'].update({build.id: build.to_database})
+        self.set(0, data)
+
+    def save_builds(self, builds: Dict[int, Build]) -> None:
+        """Saves all builds to Redis."""
+
+        data = self.get(key=0)
+        data['builds'] = builds
         self.set(0, data)
 
     @property
@@ -224,8 +231,7 @@ class LocalDatabase:
     def save_to_redis_db(self, db: MyRedisDatabase):
         for guild in self._guilds.values():
             db.save_guild(guild)
-        for build in self._builds.values():
-            db.save_build(build)
+        db.save_builds(self._builds)
 
     def set_trigger(self, guild: Guild | int, trigger: Trigger) -> None:
         """

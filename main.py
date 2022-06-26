@@ -11,6 +11,7 @@ from database import LocalDatabase, MyRedisDatabase
 from cogs.slash_triggers import SlashTriggers
 from cogs.slash_settings import SlashSettings
 from cogs.slash_builds import SlashBuilds
+from cogs.slash_sets import SlashSets
 
 
 async def main():
@@ -32,6 +33,7 @@ async def main():
     # await my_bot.add_cog(SlashSettings(bot=my_bot))
     await my_bot.add_cog(CommandSync())
     await my_bot.add_cog(SlashBuilds(bot=my_bot))
+    await my_bot.add_cog(SlashSets())
 
     try:
         await my_bot.start(DISCORD_TOKEN)

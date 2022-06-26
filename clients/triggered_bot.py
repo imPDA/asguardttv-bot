@@ -21,11 +21,23 @@ class TriggeredBot(commands.Bot):
         )  # TODO description, help_command
         self.local_database = LocalDatabase.load_from_database(remote_database)
         self.remote_database: MyRedisDatabase = remote_database
+        self.sets = self.remote_database.get('1')
+        # print(self.sets)  # TODO DELETE B4 PRODUCTION
+        # print(len(self.sets))  # TODO DELETE B4 PRODUCTION
 
     @property
     def db(self) -> LocalDatabase:
         """:class:`GuildLocalDatabase`: Database of this bot."""
         return self.local_database
+
+    # @property
+    # def sets(self) -> dict[str, str]:
+    #     # """:class:`GuildLocalDatabase`: Database of this bot."""
+    #     return self.sets
+    #
+    # @sets.setter
+    # def sets(self, value):
+    #     self._sets = value
 
     async def on_ready(self) -> None:
         print(f"Logged in as {self.user} (ID: {self.user.id})")    # TODO logging

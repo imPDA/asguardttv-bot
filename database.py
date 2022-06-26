@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import json
 import os
 import time
 from typing import Protocol, List, Optional, Dict, Any, TypeVar
@@ -95,7 +97,8 @@ class MyRedisDatabase(RedisDatabase):
     def guilds_ids(self) -> List[int]:
         """List[:class:`int`] of guilds' IDs."""
 
-        return [key for key in self.keys() if key != '0']
+        # return [key for key in self.keys() if key != '0' and key != '1']
+        return [key for key in self.keys() if len(key) == 18]
 
     def get_guild(self, id_: int) -> Guild:
         """
@@ -250,13 +253,14 @@ class LocalDatabase:
 
 
 if __name__ == '__main__':
-    redis = MyRedisDatabase()
-    guild_db = LocalDatabase.load_from_database(db=redis)
+    redis = RedisDatabase()
+    # guild_db = LocalDatabase.load_from_database(db=redis)
+    # pprint(guild_db)
 
-    # local_db = GuildLocalDatabase()
-    # local_db =
+    with open(r"C:\Users\dimax\PycharmProjects\imPDA\eso_gear_reader\final_sets.json", 'r', encoding='utf-8') as f:
+        dict_of_sets = json.load(f)
 
-    pprint(guild_db)
+    redis.set(1, dict_of_sets)
 
 
 # TODO backup with Task

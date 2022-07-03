@@ -33,7 +33,7 @@ class SlashSets(commands.Cog):
         description="...",
     )
 
-    def create_eso_set_embed(self, name: str) -> Tuple[discord.File, Embed]:
+    def build_eso_set_embed(self, name: str) -> Tuple[discord.File, Embed]:
         set_description = self.eso_sets_db.get(f"set_{name}")
         if not set_description:
             raise KeyError('No such set in RedisDatabase')
@@ -63,11 +63,11 @@ class SlashSets(commands.Cog):
         """Slash command to find a set."""
 
         try:
-            file, embed = self.create_eso_set_embed(name)
+            file, embed = self.build_eso_set_embed(name)
         except KeyError:
             sets = [set_name for set_name in self.names_of_sets if name.lower() in set_name.lower()]
             if len(sets) == 1:
-                file, embed = self.create_eso_set_embed(sets[0])
+                file, embed = self.build_eso_set_embed(sets[0])
             else:
                 file = None
                 embed = Embed(
